@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GAAD 2025 | Visual Disability</title>
+<style>
+  body { font-family: sans-serif; background: #f4f4f4; text-align: center; padding: 20px; }
+  h1 { margin-bottom: 5px; }
+  #stats { margin: 10px 0; font-size: 18px; }
+  #controls button {
+    padding: 8px 18px;
+    font-size: 16px;
+    border: none;
+    background: #2196f3;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 5px;
+  }
+  #difficultySelect, #visionOverlay {
+    display: inline-block;
+    padding: 0 5px 0 18px;
+    background: #2196f3;
+    border-radius: 5px;
+    margin: 5px;
+  }
+  #difficultySelect select, #visionOverlay select {
+    border: none;
+    color: white;
+    font-size: 16px;
+    background: inherit;
+    padding: 11px 11px 11px 0;
+    cursor: pointer;
+    outline: none;
+  }
+  #game {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    max-width: 600px;
+    margin: 20px auto;
+  }
+  .filter-lowvision {
+    filter: blur(5px);
+  }
+  .filter-protanopia {
+    filter: url('#protanopia');
+    -webkit-filter: url('#protanopia');
+    color-interpolation-filters:sRGB;	
+  }
+  .filter-deuteranomaly {
+    filter: url('#deuteranomaly');
+    -webkit-filter: url('#deuteranomaly');
+    color-interpolation-filters:sRGB;	
+  }
+  .filter-tritanopia {
+    filter: url('#tritanopia');
+    -webkit-filter: url('#tritanopia');
+    color-interpolation-filters:sRGB;	
+  }
+  .card-wrapper { width: 100%; aspect-ratio: 1 / 1; perspective: 800px; }
+  .card {
+    width: 100%; height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.4s;
+    cursor: pointer;
+  }
+  .flipped { transform: rotateY(180deg); }
+  .front, .back {
+    position: absolute;
+    width: 100%; height: 100%;
+    backface-visibility: hidden;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+  }
+  .front {
+    background: repeating-linear-gradient(
+      45deg, #ccc, #ccc 10px, #ddd 10px, #ddd 20px
+    );
+    color: #555;
+  }
+  .back { transform: rotateY(180deg); }
+  .matched .back { opacity: 0.4; }
+</style>
+</head>
+<body>
+
+<h1>Crazy Matching</h1>
+<hr>
+
+<div id="stats">⏱️ 0.000 sec | 🏆 0 pts</div>
+
+<div id="controls">
+  <div id="difficultySelect">
+    <span>🔥</span>
+    <select onchange="startGame()">
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+  </div>
+  <div id="visionOverlay">
+    <span>👁️</span>
+    <select onchange="startGame()">
+      <option value="none">Normal Vision</option>
+      <option value="lowvision">Low Vision</option>
+      <option value="protanopia">Protanopia (No Red)</option>
+      <option value="deuteranomaly">Deuteranomaly (Less Green)</option>
+      <option value="tritanopia">Tritanopia (No Blue-Yellow)</option>
+    </select>
+  </div><br/>
+  <button onclick="startGame()">🔄 Refresh Game</button>
+</div>
+
+<div id="game"></div>
+
+<div id="submitForm" style="display:none;">
+  <h3>🎉 Game Over!</h3>
+  <label>Enter your name: <input id="playerName" /></label>
+  <button onclick="submitScore()">Submit Score</button>
+</div>
+
+<script>
+let colors = [], cards = [], firstCard = null, lock = false;
+let startTime, timerInterval, timerRunning = false;
+let score = 0, lastMatchTime = 0, difficulty = 'easy', visionMode = 'none', finishedTime = 0;
+
+const game = document.getElementById('game');
+const stats = document.getElementById('stats');
+const difficultySelect = document.querySelector('div[id="difficultySelect"] select');
+const visionOverlay = document.querySelector('div[id="visionOverlay"] select');
+
+function generateColors(count, diff) {
+  let colors = [];
+  let baseHue = Math.floor(Math.random() * 360);
+  let step = diff === 'easy' ? 40 : diff === 'medium' ? 20 : 5;
+
+  for (let i = 0; i < count; i++) {
+    let hue = (baseHue + i * step + Math.random() * (step / 2)) % 360;
+    colors.push(`hsl(${hue}, 70%, 60%)`);
+  }
+  return colors;
+}
+
+function shuffle(array) {
+  for (let i = array.length-1; i>0; i--) {
+    let j = Math.floor(Math.random()*(i+1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+function startGame() {
+  visionMode = visionOverlay.value;
+  applyVisionMode(visionMode);
+
+  difficulty = difficultySelect.value;
+  colors = generateColors(8, difficulty);
+  cards = [...colors, ...colors];
+  shuffle(cards);
+  game.innerHTML = '';
+
+  cards.forEach(color => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'card-wrapper';
+    const card = document.createElement('div');
+    card.className = 'card';
+    const front = document.createElement('div');
+    front.className = 'front';
+    front.innerText = '?';
+    const back = document.createElement('div');
+    back.className = 'back';
+    back.style.background = color;
+    back.setAttribute('data-color', color);
+    card.appendChild(front); card.appendChild(back);
+    wrapper.appendChild(card);
+    game.appendChild(wrapper);
+    wrapper.onclick = () => flipCard(card);
+  });
+
+  clearInterval(timerInterval);
+  timerRunning = false;
+  startTime = 0;
+  score = 0;
+  firstCard = null;
+  lock = false;
+  lastMatchTime = 0;
+  updateStats(0);
+}
+
+function flipCard(card) {
+  if (lock || card.classList.contains('matched') || card.classList.contains('flipped')) return;
+  if (!timerRunning) {
+    startTime = performance.now();
+    timerInterval = setInterval(() => {
+      let now = performance.now();
+      updateStats(now - startTime);
+    }, 50);
+    timerRunning = true;
+  }
+
+  card.classList.add('flipped');
+
+  if (!firstCard) {
+    firstCard = card;
+  } else {
+    lock = true;
+    const color1 = firstCard.querySelector('.back').getAttribute('data-color');
+    const color2 = card.querySelector('.back').getAttribute('data-color');
+
+    if (color1 === color2) {
+      card.classList.add('matched');
+      firstCard.classList.add('matched');
+
+      let now = performance.now();
+      let matchTime = (now - startTime) - lastMatchTime;
+      let bonus = matchTime <= 3000 ? 50 : matchTime <= 6000 ? 30 : 10;
+      let multiplier = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 2 : 3;
+      multiplier += visionMode === 'none' ? 0 : visionMode === 'lowvision' ? 2 : 4;
+      score += (100 + bonus) * multiplier;
+      lastMatchTime = now - startTime;
+
+      firstCard = null;
+      lock = false;
+
+      let elapsed = now - startTime;
+      updateStats(elapsed);
+      checkWin(elapsed);
+    } else {
+      setTimeout(() => {
+        card.classList.remove('flipped');
+        firstCard.classList.remove('flipped');
+        firstCard = null;
+        lock = false;
+      }, 600);
+    }
+  }
+}
+
+function updateStats(elapsed) {
+  stats.innerText = `⏱️ ${(elapsed / 1000).toFixed(3)} sec | 🏆 ${score} pts`;
+}
+
+function checkWin(elapsed) {
+  if (document.querySelectorAll('.matched').length === cards.length) {
+    clearInterval(timerInterval);
+    finishedTime = elapsed;
+
+    document.getElementById("controls").style.display = 'none';
+    document.getElementById("game").style.display = 'none';
+    document.getElementById("submitForm").style.display = 'block';
+  }
+}
+
+function applyVisionMode(mode) {
+  game.className = ''; // reset class
+  if (mode !== 'none') {
+    game.classList.add(`filter-${mode}`);
+  }
+}
+
+function submitScore() {
+  const name = document.getElementById('playerName').value || "Anonymous";
+
+  const data = {
+    name,
+    score,
+    difficulty,
+    vision_mode: visionMode,
+    finished_time: (finishedTime / 1000).toFixed(3),
+    time_stamp: new Date().toISOString()
+  };
+
+  fetch('/save-score', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  })
+  .then(res => res.ok ? console.log("✅ Score saved!") : console.warn("❌ Save failed."))
+  .catch(err => console.error(err));
+
+  document.getElementById("submitForm").style.display = 'none';
+  document.getElementById("controls").style.display = 'block';
+  document.getElementById("game").style.display = 'grid';
+  startGame();
+}
+
+window.onload = startGame;
+</script>
+
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" style="width:0; height:0; visibility:hidden">
+  <filter id="protanopia">
+    <feColorMatrix type="matrix" values="0.1135	0.8905	-0.0019	0	-0.0021
+		    	0.1130	0.8865	0.0002	0		0.0003
+				0.0017	-0.0017	1		0		0
+				0 		0 		0 		1 		0
+			"></feColorMatrix>
+  </filter>
+  <filter id="deuteranopia">
+    <feColorMatrix type="matrix" values="0.625	0.375	0	    0		0
+				0.7  	0.3	    0       0       0
+				0	    0.3  	0.7 	0.114	0
+				0 		0 		0 		1 		0
+			"></feColorMatrix>
+  </filter>
+  <filter id="tritanopia">
+    <feColorMatrix type="matrix" values="0.95 	0.05 	0 		0 		0
+				0 		0.433	0.567	0		0
+				0		0.475	0.525	0		0
+				0		0		0		1		0
+			"></feColorMatrix>
+  </filter>
+  <filter id="protanomaly">
+    <feColorMatrix type="matrix" values="0.817   0.183  0       0        0
+	            0.333   0.667  0       0        0
+	            0       0.125  0.875   0.114	0
+	            0       0      0       1        0"></feColorMatrix>
+  </filter>
+  <filter id="deuteranomaly">
+    <feColorMatrix type="matrix" values="0.8     0.2     0       0        0
+	            0.258   0.742   0       0        0
+	            0       0.142   0.858   0        0
+	            0       0      0       1         0"></feColorMatrix>
+  </filter>
+  <filter id="tritanomaly">
+    <feColorMatrix type="matrix" values="0.967   0.033     0       0        0
+	            0       0.733     0.267   0        0
+	            0       0.183     0.817   0        0
+	            0       0         0       1        0"></feColorMatrix>
+  </filter>
+</svg>
+
+</body>
+</html>
